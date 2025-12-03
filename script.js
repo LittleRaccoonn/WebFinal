@@ -1,4 +1,4 @@
-// DOM Elements
+// DOM Elements (убираем forecastContainer)
 const searchForm = document.getElementById('searchForm');
 const searchInput = document.getElementById('location-search');
 const currentTemp = document.getElementById('currentTemp');
@@ -11,8 +11,7 @@ const tempMin = document.getElementById('tempMin');
 const humidity = document.getElementById('humidity');
 const cloudiness = document.getElementById('cloudiness');
 const windSpeed = document.getElementById('windSpeed');
-const forecastContainer = document.getElementById('forecastContainer');
-const hourlyContainer = document.getElementById('hourlyContainer');
+const hourlyContainer = document.getElementById('hourlyContainer'); // оставляем почасовой
 const loader = document.getElementById('loader');
 const errorBox = document.getElementById('error');
 
@@ -56,7 +55,6 @@ console.log('DOM elements:', {
   searchForm,
   searchInput,
   loader,
-  forecastContainer,
   hourlyContainer
 });
 
@@ -141,14 +139,14 @@ async function loadWeatherData(city) {
     if (!place) throw new Error("City not found");
     const { latitude, longitude, name, country } = place;
 
-    // Forecast with hourly + daily + current
-    const wUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m,weather_code,relativehumidity_2m,windspeed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
+    // Forecast with hourly + current (убираем daily из запроса)
+    const wUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m,weather_code,relativehumidity_2m,windspeed_10m&timezone=auto`;
     const wRes = await fetch(wUrl);
     if (!wRes.ok) throw new Error("Weather data error");
     const wData = await wRes.json();
 
-    updateCurrentWeather({ name, country }, wData.current, wData.daily);
-    updateTodayForecast(wData.daily);
+    // Для tempMax и tempMin будем использовать текущие значения
+    updateCurrentWeather({ name, country }, wData.current);
     if (wData.hourly) updateHourlyForecast(wData.hourly);
   } catch (err) {
     console.error(err);
@@ -158,8 +156,8 @@ async function loadWeatherData(city) {
   }
 }
 
-// Update current weather (no big icon)
-function updateCurrentWeather(place, current, daily) {
+// Update current weather (без daily параметра)
+function updateCurrentWeather(place, current) {
   const label = `${place.name}${place.country ? ", " + place.country : ""}`;
   const code = current?.weather_code;
   const wm = WEATHER[code] || { text: "UNKNOWN" };
@@ -172,8 +170,9 @@ function updateCurrentWeather(place, current, daily) {
   humidity.textContent = current?.relative_humidity_2m != null ? Math.round(current.relative_humidity_2m) + "%" : "—";
   windSpeed.textContent = current?.wind_speed_10m != null ? Math.round(current.wind_speed_10m) + " km/h" : "—";
 
-  tempMax.textContent = daily?.temperature_2m_max?.[0] != null ? Math.round(daily.temperature_2m_max[0]) + "°" : "—";
-  tempMin.textContent = daily?.temperature_2m_min?.[0] != null ? Math.round(daily.temperature_2m_min[0]) + "°" : "—";
+  // Для tempMax и tempMin используем текущую температуру
+  tempMax.textContent = current?.temperature_2m != null ? Math.round(current.temperature_2m) + "°" : "—";
+  tempMin.textContent = current?.temperature_2m != null ? Math.round(current.temperature_2m) + "°" : "—";
 
   const cloudValue = (code >= 2 && code <= 3) ? "86%" : (code === 1) ? "25%" : "15%";
   cloudiness.textContent = cloudValue;
@@ -191,35 +190,6 @@ function updateCurrentWeather(place, current, daily) {
     minute: '2-digit'
   });
   currentDate.setAttribute('datetime', now.toISOString());
-}
-
-// Update daily forecast (existing)
-function updateTodayForecast(daily) {
-  while (forecastContainer.firstChild) forecastContainer.removeChild(forecastContainer.firstChild);
-
-  if (!daily?.time?.length || !daily?.weather_code?.length) {
-    createFallbackForecast();
-    return;
-  }
-
-  for (let i = 0; i < Math.min(5, daily.time.length); i++) {
-    const date = daily.time[i];
-    const code = daily.weather_code[i];
-    const tMax = daily.temperature_2m_max[i];
-    const wm = WEATHER[code] || { text: "UNKNOWN" };
-
-    const item = document.createElement('div');
-    item.className = `forecast-card${i === 0 ? '' : i === 1 ? '-2' : i === 2 ? '-3' : i === 3 ? '-4' : '-5'}`;
-    item.innerHTML = `
-      <div class="element-snow${i >= 2 ? '-2' : ''}"></div>
-      <div class="group-3">
-        <time class="text-wrapper-6">${formatForecastDate(date)}</time>
-        <span class="text-wrapper-7">${wm.text}</span>
-      </div>
-      <span class="text-wrapper-8">${tMax != null ? Math.round(tMax) + "°" : "—"}</span>
-    `;
-    forecastContainer.appendChild(item);
-  }
 }
 
 // New: render hourly forecast (next 24 hours from now)
@@ -252,37 +222,6 @@ function updateHourlyForecast(hourly) {
       <div class="desc">${desc}</div>
     `;
     hourlyContainer.appendChild(el);
-  }
-}
-
-function formatForecastDate(dateString) {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('ru-RU', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  });
-}
-
-function createFallbackForecast() {
-  const times = ["Mon, Sep 11", "Tue, Sep 12", "Wed, Sep 13", "Thu, Sep 14", "Fri, Sep 15"];
-  const temps = ["18°", "21°", "19°", "16°", "14°"];
-  const weatherTypes = ["SUNNY", "PARTLY CLOUDY", "CLOUDY", "RAIN", "CLEAR"];
-
-  while (forecastContainer.firstChild) forecastContainer.removeChild(forecastContainer.firstChild);
-
-  for (let i = 0; i < 5; i++) {
-    const item = document.createElement('div');
-    item.className = `forecast-card${i === 0 ? '' : i === 1 ? '-2' : i === 2 ? '-3' : i === 3 ? '-4' : '-5'}`;
-    item.innerHTML = `
-      <div class="element-snow${i >= 2 ? '-2' : ''}"></div>
-      <div class="group-3">
-        <time class="text-wrapper-6">${times[i]}</time>
-        <span class="text-wrapper-7">${weatherTypes[i]}</span>
-      </div>
-      <span class="text-wrapper-8">${temps[i]}</span>
-    `;
-    forecastContainer.appendChild(item);
   }
 }
 
